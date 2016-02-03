@@ -1,1 +1,84 @@
+<#
+    .SYNOPSIS 
+    Query's QualysGuard for a list of Asset Groups
 
+    .DESCRIPTION
+    Query's the QualysGuard API and return an object containing the following information about an Asset Group
+         Asset Group Title
+         Asset Group IP(s)
+         Asset Group User Login
+         Asset Group User Role
+
+    .PARAMETER Credential
+    Specifices a set of credentials used to query the QualysGuard API
+
+    .INPUTS
+    You can pipe a Credential Object to this function or directly call it from using it's named parameter.
+   
+    .EXAMPLE
+    C:\PS> Get-QualysAssetGroupInformation -credential $cred
+
+    .EXAMPLE
+    C:\PS> $cred | Get-QualysAssetGroupInformation
+
+    #>
+function Get-QualysAssetGroupInformation
+{
+    [CmdletBinding(SupportsShouldProcess=$true, 
+                  HelpUri = 'https://raw.githubusercontent.com/MSAdministrator/POSH-Guard/master/Get-QualysAssetGroupInformation',
+                  ConfirmImpact='Medium')]
+    [Alias()]
+    Param
+    (
+        # Param1 help description
+        [parameter(Mandatory=$true,
+                   ValueFromPipeline=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   HelpMessage="Please provide a credential obejct")]
+                   [ValidateNotNullOrEmpty()]
+                   [System.Management.Automation.CredentialAttribute()]$credential
+    ) 
+
+    Begin
+    {
+        $results = @()
+        $assetGroupInfo = @()
+
+        Try
+        {
+            [xml]$assetGroupInfo = Invoke-RestMethod -Uri "https://qualysapi.qualys.com/msp/asset_group_list.php" -Credential $credential
+        }
+        Catch
+        {
+            Write-Debug "Error using Invoke-RestMethod: $_"
+        }
+    }
+    Process
+    {
+        foreach ($item in $assetGroupInfo.SelectNodes("/ASSET_GROUP_LIST/ASSET_GROUP"))
+        {
+            for ($u=0; $u -lt $($item.ASSIGNED_USERS.ASSIGNED_USER.LOGIN).count;$u++)
+            {
+
+                $tempAssetGroupInfo = @()
+                            
+                $props = @{
+                        userlogin=$($item.ASSIGNED_USERS.ASSIGNED_USER[$u].LOGIN.InnerText)
+                        userrole=$($item.ASSIGNED_USERS.ASSIGNED_USER[$u].ROLE.InnerText)
+                        assetgrouptitle=$($item.TITLE.InnerText)
+                        ip=$($item.SCANIPS.IP)
+                        }
+
+                $tempAssetGroupInfo = New-Object PSObject -Property $props
+        
+                $results += $tempAssetGroupInfo
+                                
+            }      
+        }
+    }               
+    End
+    {
+        Export-Clixml -Path "$env:USERPROFILE\Desktop\QualysData\assetgroupinfo.xml" -InputObject $results
+        return $results
+    }
+}
