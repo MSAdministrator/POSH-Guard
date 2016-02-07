@@ -1,0 +1,85 @@
+<#
+.Synopsis
+   This function lists out all IPs in your QualysGuard subscription
+.DESCRIPTION
+   This function gathers a single split list of all IPs and ranges into a single list.  This function
+   is pulling the list from the asset_group_list.php function in Qualys VM API. 
+.EXAMPLE
+   Get-QualysEnrolledIPs -credential $cred
+
+
+#>
+function Get-QualysEnrolledIPs
+{
+    [CmdletBinding(DefaultParameterSetName='Parameter Set 1', 
+                  SupportsShouldProcess=$true, 
+                  PositionalBinding=$false,
+                  HelpUri = 'http://www.microsoft.com/',
+                  ConfirmImpact='Medium')]
+    Param
+    (
+        [parameter(Mandatory=$true,
+                   ValueFromPipeline=$true,
+                   ValueFromPipelineByPropertyName=$true,
+                   HelpMessage="Please provide a crednetial obejct")]
+                   [ValidateNotNullOrEmpty()]
+	[System.Management.Automation.CredentialAttribute()]
+	$credential
+    )
+
+    Begin
+    {
+        $expandedIPRange = @()
+        $assetgroupIPs = @()
+
+        [xml]$hostinfo = Invoke-RestMethod -Uri "https://qualysapi.qualys.com/msp/asset_group_list.php?" -Credential $credential
+    
+    }
+    Process
+    {
+        foreach ($item in $hostinfo.SelectNodes("ASSET_GROUP_LIST/ASSET_GROUP/SCANIPS/IP"))
+        {
+            foreach ($ipaddress in $($item))
+            {
+                if ($ipaddress -match "-")
+                {
+                    $splitip = $ipaddress -split '[\-]'
+                    for ($ip=0;$ip -lt $splitip.count;$ip++)
+                    {
+                        if ($ip -eq "0")
+                        {
+                            $startSplitIp = $splitip[$ip]
+                        }
+                        else
+                        {
+                            $endSplitIp = $splitip[$ip]
+                                   
+                            $ip1 = ([System.Net.IPAddress]$startSplitIp).GetAddressBytes()
+                            [Array]::Reverse($ip1)
+                            $ip1 = ([System.Net.IPAddress]($ip1 -join '.')).Address
+
+                            $ip2 = ([System.Net.IPAddress]$endSplitIp).GetAddressBytes()
+                            [Array]::Reverse($ip2)
+                            $ip2 = ([System.Net.IPAddress]($ip2 -join '.')).Address
+
+                            for ($x=$ip1; $x -le $ip2; $x++)
+                            {
+                                $ips = ([System.Net.IPAddress]$x).GetAddressBytes()
+                                [Array]::Reverse($ips)
+                                $assetgroupIPs += $ips -join '.'
+                            }
+                        }
+                    }
+                }          
+            }
+            else
+            {  
+                $assetgroupIPs += $ipaddress     
+            }
+        }
+    }
+    End
+    {
+        return $assetgroupIPs
+    }
+}
